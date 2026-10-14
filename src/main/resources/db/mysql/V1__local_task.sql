@@ -13,5 +13,5 @@ CREATE TABLE local_task (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE local_task_event (
  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,task_id BIGINT NOT NULL,from_status VARCHAR(20),to_status VARCHAR(20) NOT NULL,
- version INT NOT NULL,reason VARCHAR(128),create_time BIGINT NOT NULL,KEY ix_task(task_id,id)
+ version INT NOT NULL,execution_token VARCHAR(36),result_outcome VARCHAR(16),reason VARCHAR(128),create_time BIGINT NOT NULL,KEY ix_task(task_id,id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

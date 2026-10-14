@@ -47,6 +47,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
+    <jackson-bom.version>2.17.3</jackson-bom.version>
     <slf4j.ver>1.7.36</slf4j.ver>
   </properties>
 
@@ -83,6 +84,7 @@
     </dependency>
 
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.17.3</version><scope>test</scope></dependency>
     <dependency><groupId>mysql</groupId><artifactId>mysql-connector-java</artifactId><version>8.0.28</version><scope>test</scope></dependency>
   </dependencies>
 

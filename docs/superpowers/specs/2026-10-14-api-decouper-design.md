@@ -1,6 +1,6 @@
 # api-decouper 第一版设计
 
-状态：待用户审阅。本文记录已确认方向并补齐实现所需规则，不代表代码已实现。
+状态：用户已确认方案边界并授权实现；实现位于 feature/reliable-local-tasks，验收证据见 docs/acceptance.md。
 
 ## 目标与边界
 

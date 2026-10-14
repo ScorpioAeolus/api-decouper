@@ -6,7 +6,7 @@
 
 **Architecture:** JDBC 任务状态为可靠事实来源，MQ 和调度只触发统一执行器。执行器通过 infeed-spi 适配器解析唯一 Handler，将外部调用、未知结果核实及本地结果应用分开恢复。
 
-**Tech Stack:** Java 8、Spring Boot 2.7.3、MySQL、infeed-spi 1.0.0.RELEASE、JUnit 5、Mockito、Testcontainers MySQL（选择支持 Java 8 的版本）。
+**Tech Stack:** Java 8、Spring Boot 2.7.3、MySQL、infeed-spi 1.0.0.RELEASE、JUnit 5、Mockito、Docker CLI 隔离 MySQL 测试实例（执行时调整，避免新增测试运行库）。
 
 **Spec:** docs/superpowers/specs/2026-10-14-api-decouper-design.md
 
@@ -56,7 +56,7 @@
 
 **Interfaces:** `TaskSubmissionService.submit(TaskRequest): long`；`LocalTaskRepository.findById(long): LocalTask`、`insert(TaskRequest): long`、`claim(long,int,TaskStatus,String): Optional<LocalTask>`、`transition(long,String,TaskStatus,TaskStatus): boolean`；实际结果/错误参数以类型化命令封装，禁止拼接任意 SQL。
 
-- [ ] 增加 starter-test、MySQL 驱动和 Testcontainers 测试依赖；测试类 *IT 通过 mysql-it profile 的 failsafe 执行，缺 Docker 时显式失败而非悄悄跳过。
+- [ ] 增加 starter-test、MySQL 驱动测试依赖；MySQL 测试实例由 scripts/mysql-test.sh 创建并清理；测试类 *IT 通过 mysql-it profile 的 failsafe 执行，缺 Docker 时显式失败而非悄悄跳过。
 - [ ] 写 TaskSubmissionIT：真实生成 ID；无事务拒绝；业务回滚同时回滚任务和事件；提交前不发 MQ；发送失败后任务仍存在；相同键同输入返回旧 ID、不同输入拒绝；并发重复插入只有一条；非绑定数据源事务拒绝。
 - [ ] 写 LocalTaskRepositoryIT：MySQL UTC 到期校验；并发 CAS 仅一次成功；旧令牌不能更新；状态变更和事件共同回滚；结果持久化后拒绝退回 READY。
 - [ ] 运行 `mvn -Pmysql-it -Dit.test=TaskSubmissionIT,LocalTaskRepositoryIT verify -Dgpg.skip=true`，确认新增行为失败。
@@ -67,9 +67,9 @@
 
 **Interfaces:** `TaskExecutorService.executeTask(long): TaskTriggerResult`；`TaskResultApplier.apply(long,String executionToken): void`；返回值区分完成、已接管、跳过及基础设施失败，不把跳过误认业务成功。
 
-- [ ] 写 TaskExecutorServiceTest：未知异常进入 UNKNOWN；明确失败也进入结果应用；仅业务授权可重试；到期和预算共同校验；确定结果保存失败不调 apply；回调失败只补 apply；三阶段独立计数；null/非法决策进入人工处理。
+- [ ] 写 TaskExecutionIT：未知异常进入 UNKNOWN；明确失败也进入结果应用；仅业务授权可重试；到期和预算共同校验；确定结果保存失败不调 apply；回调失败只补 apply；三阶段独立计数；null/非法决策进入人工处理。
 - [ ] 写 TaskExecutionIT：外部调用时无事务；业务更新与 DONE 原子回滚；回调抛异常保持结果；迟到执行者不写回；执行崩溃走 recover；APPLYING 崩溃只补结果；回收器与 apply 的行锁竞争不会提交旧所有者业务更新。
-- [ ] 运行 `mvn -Dtest=TaskExecutorServiceTest test` 和 `mvn -Pmysql-it -Dit.test=TaskExecutionIT verify -Dgpg.skip=true`，确认失败。
+- [ ] 运行 `mvn -Dtest=TaskExecutionIT test` 和 `mvn -Pmysql-it -Dit.test=TaskExecutionIT verify -Dgpg.skip=true`，确认失败。
 - [ ] 实现执行器、分阶段预算和本地结果事务。结果应用先 SELECT FOR UPDATE 核验令牌，任一完成 CAS 失败必须抛异常回滚；业务执行期间不持有外部阶段数据库事务。
 - [ ] 测试通过后提交 `feat: recover uncertain calls and apply durable results atomically`。
 
@@ -88,7 +88,7 @@
 
 - [ ] 写 DecouperAutoConfigurationTest：缺配置不隐式启用；数据源/事务歧义启动失败；SPI 全局容器含外上下文实现启动拒绝；无需 MQ 可装配；示例不成为宿主 Bean；线程池正确关闭。
 - [ ] 写 TaskAlertMonitorTest：积压、最老等待、租约、未知、结果应用、预算、路由、MQ 与扫描无进展规则；聚合、冷却、恢复通知；接收器异常隔离；指标不带 taskId 高基数标签。
-- [ ] 写 TaskRecoveryServiceTest：版本冲突、空原因、终态、非法跳阶段均拒绝；合法恢复有审计且保留确定结果。
+- [ ] 写 TaskRecoveryServiceIT：版本冲突、空原因、终态、非法跳阶段均拒绝；合法恢复有审计且保留确定结果。
 - [ ] 先运行测试确认失败，实现配置属性、Boot 2 注册入口、规则引擎与人工恢复 API（不提供默认 HTTP 端点）；再重跑通过并提交 `feat: configure task runtime and operational alerts`。
 
 ## Task 6：接入示例和整体验证
@@ -103,5 +103,13 @@
 - 2026-10-14：原始框架 `mvn -o test` BUILD SUCCESS，无测试用例。
 - 已创建本地 main 基线及 feature/reliable-local-tasks 分支，未配置远端。
 - 已用 javap 验证发布 JAR 提供 ISpiContainer.lookup 和 SpiRegister 注册 API；适配行为仍需任务 1 测试证明。
-- 当前 Java 为 1.8.0_202，docker CLI 存在；MySQL / Docker 服务可用性尚未验证。
-- 本计划由当前会话逐任务执行；产品实现开始前需用户审阅本计划。
+- 当前 Java 为 1.8.0_202，docker CLI 存在；MySQL / Docker 已通过隔离实例测试验证。
+- 用户已确认边界并授权当前会话直接实现；原型互相依赖的前三阶段合为一个核心提交，后续完整回归验证。
+
+
+## 实际完成记录
+
+- 用户已授权全部技术细节由实现者决定，业务语义调整才需再次确认。
+- 任务 1-4 的原型替换核心合并为提交 2c6a8de；任务 5-6 与最终审查修复在后续提交中保存。
+- 精确测试清单、需求对应和技术取舍以 docs/acceptance.md、docs/implementation-notes.md 为准；MySQL 集成覆盖替代了计划中的部分独立 mock 单测。
+- 独立审查三项 P2 已用回归修复，未合并或推送分支。

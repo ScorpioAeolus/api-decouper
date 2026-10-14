@@ -1,0 +1,16 @@
+package com.api.decouper.observability;
+
+public enum AlertRule {
+  BACKLOG,
+  OLD_PENDING,
+  LEASE_EXPIRED,
+  LONG_RUNNING,
+  UNKNOWN_AGE,
+  APPLY_FAILURES,
+  MANUAL,
+  BUDGET_EXHAUSTED,
+  ROUTE_ERROR,
+  MQ_UNAVAILABLE,
+  SCAN_STALLED,
+  WORKER_FAILURE
+}
