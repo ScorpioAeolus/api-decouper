@@ -1,29 +1,23 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>2.7.3</version>
   </parent>
-
-
   <groupId>io.github.scorpioaeolus</groupId>
   <artifactId>api-decouper</artifactId>
   <version>1.0-0.RELEASE</version>
-
+  <packaging>pom</packaging>
   <name>api-decouper</name>
   <description>api-decouper</description>
   <url>https://github.com/ScorpioAeolus/api-decouper</url>
-
   <licenses>
     <license>
       <name>The Apache Software License, Version 2.0</name>
       <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
     </license>
   </licenses>
-
   <developers>
     <developer>
       <id>typhoon</id>
@@ -35,14 +29,11 @@
       </roles>
     </developer>
   </developers>
-
   <scm>
     <connection>https://github.com/ScorpioAeolus/api-decouper.git</connection>
     <developerConnection>scm:git:ssh://git@github.com:ScorpioAeolus/api-decouper.git</developerConnection>
     <url>https://github.com/ScorpioAeolus/api-decouper</url>
   </scm>
-
-
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.8</maven.compiler.source>
@@ -50,51 +41,34 @@
     <jackson-bom.version>2.17.3</jackson-bom.version>
     <slf4j.ver>1.7.36</slf4j.ver>
   </properties>
-
-  <dependencies>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-autoconfigure</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-jdbc</artifactId>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-      <version>${slf4j.ver}</version>
-    </dependency>
-    <dependency>
-      <groupId>com.alibaba</groupId>
-      <artifactId>fastjson</artifactId>
-      <version>1.2.42</version>
-    </dependency>
-    <dependency>
-      <groupId>org.projectlombok</groupId>
-      <artifactId>lombok</artifactId>
-      <version>1.18.24</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.github.scorpioaeolus</groupId>
-      <artifactId>infeed-spi</artifactId>
-      <version>1.0.0.RELEASE</version>
-    </dependency>
-
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
-    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.17.3</version><scope>test</scope></dependency>
-    <dependency><groupId>mysql</groupId><artifactId>mysql-connector-java</artifactId><version>8.0.28</version><scope>test</scope></dependency>
-  </dependencies>
-
-  <profiles><profile><id>mysql-it</id><build><plugins><plugin>
-    <groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId><version>2.22.2</version>
-    <executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions>
-  </plugin></plugins></build></profile></profiles>
+  <profiles>
+    <profile>
+      <id>mysql-it</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <version>2.22.2</version>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <failIfNoTests>false</failIfNoTests>
+              <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
   <build>
     <plugins>
-      <!--   central发布插件    -->
       <plugin>
         <groupId>org.sonatype.central</groupId>
         <artifactId>central-publishing-maven-plugin</artifactId>
@@ -103,9 +77,14 @@
         <configuration>
           <publishingServerId>typhoon</publishingServerId>
           <tokenAuth>true</tokenAuth>
+          <excludeArtifacts>
+            <excludeArtifact>api-decouper-starter-samples</excludeArtifact>
+            <excludeArtifact>api-decouper-sample-support</excludeArtifact>
+            <excludeArtifact>api-decouper-sample-payment</excludeArtifact>
+            <excludeArtifact>api-decouper-sample-reliability</excludeArtifact>
+          </excludeArtifacts>
         </configuration>
       </plugin>
-      <!--   source源码插件 -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
@@ -119,12 +98,20 @@
           </execution>
         </executions>
       </plugin>
-      <!--   javadoc插件 -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-javadoc-plugin</artifactId>
         <version>2.9.1</version>
-        <configuration><additionalparam>-Xdoclint:none</additionalparam><tags><tag><name>date</name><placement>a</placement><head>Date:</head></tag></tags></configuration>
+        <configuration>
+          <additionalparam>-Xdoclint:none</additionalparam>
+          <tags>
+            <tag>
+              <name>date</name>
+              <placement>a</placement>
+              <head>Date:</head>
+            </tag>
+          </tags>
+        </configuration>
         <executions>
           <execution>
             <id>attach-javadocs</id>
@@ -163,4 +150,22 @@
       </plugin>
     </plugins>
   </build>
+  <modules>
+    <module>api-decouper-starter</module>
+    <module>api-decouper-starter-samples</module>
+  </modules>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>io.github.scorpioaeolus</groupId>
+        <artifactId>api-decouper-starter</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.github.scorpioaeolus</groupId>
+        <artifactId>api-decouper-sample-support</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 </project>

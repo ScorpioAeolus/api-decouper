@@ -28,3 +28,15 @@
 审查未留下待修复的重要问题或延期的小问题。验证范围和生产接入边界见 acceptance.md。
 
 最终验证：2026-10-14（Asia/Shanghai），`mvn clean test` 13/13 通过；`bash scripts/mysql-test.sh` 13 个单元测试 + 31 个真实 MySQL 集成测试通过，0 跳过。JAR 已检查包含自动配置及 DDL、不包含支付示例。
+
+
+## 后续结构调整（以此节为当前约定）
+
+按用户要求调整为父 POM + api-decouper-starter + api-decouper-starter-samples 多模块，samples 的公共支持、支付、可靠性分成三个子模块。先前记录中的“单模块”和“临时 Docker 实例”仅描述历史验证方式。
+
+当前不再自动管理数据库容器；只使用用户提供的现有专用测试库及受限账号。凭据仅通过临时环境变量注入，不进入仓库；运行数据库案例前显式允许重建专用库内的测试表。
+
+
+模块化审查补强：Central 发布插件使用显式 excludeArtifacts 排除 samples 父模块与全部案例，不只依赖 Maven deploy.skip。新案例注册时同步更新排除列表。公共测试基座以同机进程锁串行保护共享测试库，避免 -T 并行的案例互相 DROP 表；这不改变组件的 CAS 机制或依赖方向。
+
+发布排除配置参照 [Sonatype 官方配置说明](https://central.sonatype.org/publish/publish-portal-maven/#excludeartifacts)，保持原插件版本。本轮仅验证构建及配置，没有执行部署或上传。

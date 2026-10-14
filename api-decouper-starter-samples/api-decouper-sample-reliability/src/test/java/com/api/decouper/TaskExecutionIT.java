@@ -7,6 +7,7 @@ import com.api.decouper.autoconfigure.DecouperProperties;
 import com.api.decouper.core.*;
 import com.api.decouper.entity.*;
 import com.api.decouper.observability.RuntimeSignals;
+import com.api.decouper.samples.support.MySqlFixture;
 import com.api.decouper.spi.*;
 import java.time.Instant;
 import java.util.concurrent.*;

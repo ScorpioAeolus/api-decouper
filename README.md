@@ -4,6 +4,19 @@
 
 原始框架保留在本地 `main`（`db18c8e`）；实现位于 `feature/reliable-local-tasks`。当前 SPI 和表结构替换了未完成的原型契约，不能直接覆盖旧表上线。
 
+## 项目结构
+
+```text
+api-decouper/                          # Maven 父项目，packaging=pom
+├── api-decouper-starter/               # 组件源码、自动配置、DDL、独立单元测试
+└── api-decouper-starter-samples/       # 案例聚合父模块，packaging=pom
+    ├── api-decouper-sample-support/    # 公共测试基座、显式数据库配置
+    ├── api-decouper-sample-payment/    # 支付 Handler 与订单状态案例
+    └── api-decouper-sample-reliability/# 事务、并发、重试、调度及告警验证
+```
+
+组件只依赖生产所需库，不依赖 samples。新增案例只需在 samples 父 POM 中注册子模块，依赖 starter；数据库测试按需以 test scope 引入 sample-support，不需要改组件代码或复用其他案例的测试类。
+
 ## 运行边界
 
 - Java 8、Spring Boot 2.7、MySQL 8 / InnoDB；使用 Spring JDBC 的 `DataSourceTransactionManager`。
@@ -15,8 +28,8 @@
 
 ## 接入
 
-1. 引入本项目构建的 JAR，以及宿主自己的 JDBC 驱动和连接池。
-2. 由宿主按发布流程执行 `src/main/resources/db/mysql/V1__local_task.sql`。组件不会自动建表，也不提供旧原型表的自动迁移。
+1. 引入 `io.github.scorpioaeolus:api-decouper-starter:1.0-0.RELEASE`，以及宿主自己的 JDBC 驱动和连接池。根项目已改为 Maven 父 POM，不再生成组件 JAR。
+2. 由宿主按发布流程执行 `api-decouper-starter/src/main/resources/db/mysql/V1__local_task.sql`。组件不会自动建表，也不提供旧原型表的自动迁移。
 3. 显式启用并绑定数据源。所有时间以数据库生成的 UTC epoch 毫秒存储，不依赖 JVM 时区。
 
 ```yaml
@@ -66,7 +79,7 @@ public class PaymentInitHandler implements TaskHandler<PaymentRequest, PaymentRe
 }
 ```
 
-完整可运行示例位于 [PaymentExample.java](src/test/java/com/api/decouper/examples/PaymentExample.java)，配套 [PaymentScenarioIT.java](src/test/java/com/api/decouper/PaymentScenarioIT.java)。示例采用 BigDecimal、明确外部结果分类，并保护 PAID 等终态，不会打包成宿主默认业务 Bean。
+完整可运行示例位于 [PaymentExample.java](api-decouper-starter-samples/api-decouper-sample-payment/src/main/java/com/api/decouper/examples/PaymentExample.java)，配套 [PaymentScenarioIT.java](api-decouper-starter-samples/api-decouper-sample-payment/src/test/java/com/api/decouper/PaymentScenarioIT.java)。示例采用 BigDecimal、明确外部结果分类，并保护 PAID 等终态，不会打包成宿主默认业务 Bean。
 
 组件自动把 `@BizSpi` Handler 注册进真实 infeed-spi 容器并精确解析 `bizType + ":v" + handlerVersion`。不需要为本组件额外启用 infeed 广播代理。实现缺失、条件不满足和同名冲突明确报错；不允许多实现匹配后广播支付请求。
 
@@ -136,19 +149,33 @@ api-decouper:
 
 ## 验证
 
+默认构建编译全部模块并运行单元测试，不连接数据库：
+
 ```bash
 mvn clean test
-# 自动创建临时 MySQL 容器、等待就绪、运行 MySQL 测试并清理该容器：
+# 只验证组件：
+mvn -pl api-decouper-starter -am clean test
+```
+
+MySQL 案例只连接用户已经启动的实例，不创建、启动、停止或删除容器。使用专用测试库及仅获该库权限的账号，通过环境变量提供配置：
+
+```bash
+export DECOUPER_TEST_JDBC_URL='jdbc:mysql://127.0.0.1:3306/api_decouper_test?serverTimezone=UTC'
+export DECOUPER_TEST_USERNAME='<专用测试账号>'
+# 通过本机环境/秘密管理器设置 DECOUPER_TEST_PASSWORD，不提交密码。
+export DECOUPER_TEST_ALLOW_RESET=true
 bash scripts/mysql-test.sh
 ```
 
-也可显式使用一个专用空测试库（测试会删除并重建 local_task、local_task_event，清空 sample_order）：
+`ALLOW_RESET` 表示允许测试在指定库内重建任务表、清空示例订单表；不会创建数据库或修改账号权限。缺少连接或账号配置时，在连接前失败；没有默认 root、密码或备用数据库。系统数据库会被拒绝。
+
+单独运行某个案例并自动构建其依赖：
 
 ```bash
-mvn -Pmysql-it verify -Dgpg.skip=true \
-  '-Ddecouper.test.url=jdbc:mysql://127.0.0.1:13316/decouper_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC'
+bash scripts/mysql-test.sh -pl api-decouper-starter-samples/api-decouper-sample-payment -am
+bash scripts/mysql-test.sh -pl api-decouper-starter-samples/api-decouper-sample-reliability -am
 ```
 
-仅限测试凭据 root / decouper-test-only，不允许指向业务数据库。未启用 mysql-it 时不会运行 `*IT`；启用后连接失败会显式失败，不会静默跳过。验证不执行部署、数据库生产变更或远端推送。
+测试会重建 local_task、local_task_event，并清空 sample_order；仅对专用空测试库使用。SQL 权限需求为该库的 SELECT、INSERT、UPDATE、DELETE、CREATE、DROP、ALTER、INDEX，不需要全局或 root 权限。同一台机器上，公共基座以本地进程锁保护同一测试库的完整测试生命周期，支持 Maven `-T` 或 JUnit 并行调度而不互相重建表；不同机器同时测试则使用各自独立数据库。此锁只在 samples 中，不进入 starter。
 
-设计与实现计划位于 `docs/superpowers/`，需求验收记录位于 `docs/acceptance.md`。
+验证型 samples 通过 `*IT` 运行；未启用 mysql-it 时不执行数据库案例。组件单元测试、案例支持单元测试、支付案例和可靠性案例分模块隔离。设计与实现计划位于 `docs/superpowers/`，需求验收记录位于 `docs/acceptance.md`。

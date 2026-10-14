@@ -7,6 +7,7 @@ import com.api.decouper.autoconfigure.*;
 import com.api.decouper.core.*;
 import com.api.decouper.entity.*;
 import com.api.decouper.observability.*;
+import com.api.decouper.samples.support.MySqlFixture;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 

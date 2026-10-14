@@ -8,6 +8,7 @@ import com.api.decouper.core.*;
 import com.api.decouper.entity.*;
 import com.api.decouper.examples.PaymentExample.*;
 import com.api.decouper.observability.*;
+import com.api.decouper.samples.support.MySqlFixture;
 import com.api.decouper.spi.InfeedHandlerResolver;
 import com.infeed.spi.core.container.ISpiContainer;
 import java.math.BigDecimal;

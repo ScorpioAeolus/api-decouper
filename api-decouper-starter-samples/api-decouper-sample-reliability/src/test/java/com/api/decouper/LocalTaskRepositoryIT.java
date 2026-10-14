@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.api.decouper.api.*;
 import com.api.decouper.core.*;
 import com.api.decouper.entity.*;
+import com.api.decouper.samples.support.MySqlFixture;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.Test;

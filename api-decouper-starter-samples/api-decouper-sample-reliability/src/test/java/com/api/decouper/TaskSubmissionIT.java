@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.api.decouper.api.*;
 import com.api.decouper.core.*;
+import com.api.decouper.samples.support.MySqlFixture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
@@ -66,7 +67,7 @@ class TaskSubmissionIT extends MySqlFixture {
         new TaskSubmissionService(repo, null, new com.api.decouper.observability.RuntimeSignals());
     org.springframework.jdbc.datasource.DriverManagerDataSource other =
         new org.springframework.jdbc.datasource.DriverManagerDataSource(
-            ds.getUrl(), "root", "decouper-test-only");
+            ds.getUrl(), settings.getUsername(), settings.getPassword());
     TransactionTemplateOther.run(
         other, () -> assertThrows(IllegalStateException.class, () -> s.submit(request())));
   }

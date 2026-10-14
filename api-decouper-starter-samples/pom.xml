@@ -1,0 +1,21 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.scorpioaeolus</groupId>
+    <artifactId>api-decouper</artifactId>
+    <version>1.0-0.RELEASE</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+  <artifactId>api-decouper-starter-samples</artifactId>
+  <packaging>pom</packaging>
+  <name>api-decouper-starter-samples</name>
+  <modules>
+    <module>api-decouper-sample-support</module>
+    <module>api-decouper-sample-payment</module>
+    <module>api-decouper-sample-reliability</module>
+  </modules>
+  <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <gpg.skip>true</gpg.skip>
+  </properties>
+</project>
