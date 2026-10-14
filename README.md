@@ -179,3 +179,5 @@ bash scripts/mysql-test.sh -pl api-decouper-starter-samples/api-decouper-sample-
 测试会重建 local_task、local_task_event，并清空 sample_order；仅对专用空测试库使用。SQL 权限需求为该库的 SELECT、INSERT、UPDATE、DELETE、CREATE、DROP、ALTER、INDEX，不需要全局或 root 权限。同一台机器上，公共基座以本地进程锁保护同一测试库的完整测试生命周期，支持 Maven `-T` 或 JUnit 并行调度而不互相重建表；不同机器同时测试则使用各自独立数据库。此锁只在 samples 中，不进入 starter。
 
 验证型 samples 通过 `*IT` 运行；未启用 mysql-it 时不执行数据库案例。组件单元测试、案例支持单元测试、支付案例和可靠性案例分模块隔离。设计与实现计划位于 `docs/superpowers/`，需求验收记录位于 `docs/acceptance.md`。
+
+游戏业务完整案例见 [游戏充值验证](docs/game-recharge-validation.md)：本地订单提交、异步支付发起、超时查单、到账核验及幂等钱包入账。
