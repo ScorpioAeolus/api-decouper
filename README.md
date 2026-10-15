@@ -4,6 +4,100 @@
 
 原始框架保留在本地 `main`（`db18c8e`）；实现位于 `feature/reliable-local-tasks`。当前 SPI 和表结构替换了未完成的原型契约，不能直接覆盖旧表上线。
 
+## 阅读导航
+
+- [整体架构](#整体架构)
+- [任务执行流程](#任务执行流程)
+- [项目结构](#项目结构)
+- [运行边界](#运行边界)
+- [业务项目接入步骤](#业务项目接入步骤)
+- [游戏充值案例](#游戏充值案例)
+- [状态及重试](#状态及重试)
+- [监控和告警](#监控和告警)
+- [业务接入验收](#业务接入验收)
+- [验证](#验证)
+
+图表使用 Mermaid，GitHub 可直接渲染；本地阅读建议使用支持 Mermaid 的 Markdown 预览器。
+
+## 整体架构
+
+组件嵌入业务应用，复用宿主数据源和本地事务。数据库任务记录是可靠事实来源，MQ 仅用于加速唤醒。每个实例都可独立扫描，由数据库 CAS 和执行令牌协调执行权，无需分布式锁服务。
+
+```mermaid
+flowchart TB
+    Caller[业务请求] --> Service[宿主业务服务]
+    subgraph Host[业务应用实例：可部署多个]
+        Service --> Submit[TaskSubmissionService]
+        Submit --> Commit[提交本地事务]
+        Commit --> Publish[提交后发布 taskId]
+        Consume[宿主 MQ 消费适配器] --> Executor[TaskExecutorService]
+        Scan[TaskScheduler：默认每 5 秒扫描] --> Executor
+        Executor --> Claim[CAS 抢占、租约和执行令牌]
+        Claim --> Resolver[InfeedHandlerResolver]
+        Resolver --> Handler[业务 TaskHandler：类型与版本路由]
+        Handler --> Apply[applyResult：本地结果应用]
+        Monitor[监控与规则评估] --> Sink[宿主 TaskAlertSink]
+    end
+    subgraph DB[同一个 MySQL 数据源]
+        Business[(业务表)]
+        Tasks[(local_task)]
+        Events[(local_task_event)]
+    end
+    Service -->|同事务业务写入| Business
+    Submit -->|同事务任务写入| Tasks
+    Publish --> MQ[可选 MQ]
+    MQ --> Consume
+    Tasks -->|到期任务与过期租约| Scan
+    Claim --> Tasks
+    Handler -->|事务外 execute / recover| API[外部 API / 查单]
+    Executor -->|先持久化明确结果| Tasks
+    Apply -->|同事务业务状态与任务 DONE| DB
+    Executor --> Events
+    DB --> Monitor
+```
+
+| 层次 | 责任 |
+| --- | --- |
+| 宿主业务 | 输入快照、业务幂等、渠道协议、结果核实、安全重试决定、状态更新 |
+| 通用组件 | 同事务任务提交、双通道驱动、SPI 路由、CAS、租约、结果持久化、补偿及告警 |
+| 基础设施 | MySQL 持久化与事务；可选 MQ 提供低延迟唤醒 |
+
+提交后发布 MQ 与数据库提交不是一个分布式原子事务。消息发送失败或进程在提交后退出时，已提交任务仍由扫描驱动。外部调用也不与本地数据库构成原子事务，因此未知结果必须交给业务核实。
+
+## 任务执行流程
+
+MQ 与扫描共用执行入口。抢占失败、任务未到期或已完成时，不会再次调用外部 API；具体消息确认策略见接入步骤。
+
+```mermaid
+flowchart TD
+    Trigger[MQ taskId / 扫描到期任务] --> Check{任务状态、到期时间和容量检查}
+    Check -->|不可执行| Skip[跳过或返回 BUSY]
+    Check -->|可执行| CAS{CAS 抢占成功?}
+    CAS -->|否| Skip
+    CAS -->|是| Phase{当前待处理阶段}
+    Phase -->|READY / RETRY_WAIT| Execute[EXECUTING：业务 execute]
+    Phase -->|UNKNOWN| Recover[RECOVERING：业务 recover]
+    Phase -->|RESULT_READY| Apply[APPLYING：短本地事务]
+    Execute --> Result{外部结果分类}
+    Result -->|明确成功或失败| Persist[持久化结果：RESULT_READY]
+    Result -->|业务明确允许安全重试| Retry[RETRY_WAIT：等待指定时间]
+    Result -->|超时或未分类异常| Unknown[UNKNOWN：等待核实]
+    Unknown --> Recover
+    Recover --> Decision{业务核实决定}
+    Decision -->|明确结果| Persist
+    Decision -->|继续等待| Unknown
+    Decision -->|确认安全重试| Retry
+    Decision -->|无法核实| Manual[MANUAL：告警及人工处理]
+    Retry -->|到期后重新驱动| Trigger
+    Persist --> Apply
+    Apply --> Applied{业务更新与任务 DONE 提交成功?}
+    Applied -->|是| Done[DONE：结果已应用]
+    Applied -->|否：事务回滚| Reapply[保留明确结果，退避后只补应用]
+    Reapply --> Apply
+```
+
+图中循环均受下一次执行时间、阶段次数预算和适用的任务年龄约束，不代表无限重试。执行或核实租约过期后进入 UNKNOWN；应用阶段租约过期则回到 RESULT_READY。超出预算进入 MANUAL。执行令牌阻止失去所有权的执行者覆盖新状态。
+
 ## 项目结构
 
 ```text
@@ -197,6 +291,84 @@ public TaskMessagePublisher taskMessagePublisher(YourMessageClient client) {
 - [GameRechargeHandler.java](api-decouper-starter-samples/api-decouper-sample-payment/src/main/java/com/api/decouper/examples/game/GameRechargeHandler.java)：SPI 路由、外部调用、查单核实、结果分类与编解码。
 - [GameRechargeService.java](api-decouper-starter-samples/api-decouper-sample-payment/src/main/java/com/api/decouper/examples/game/GameRechargeService.java)：同事务创建订单和任务、终态保护、幂等钱包入账。
 - [游戏充值验证](docs/game-recharge-validation.md)：15 个验证场景及模拟渠道边界。
+
+## 游戏充值案例
+
+固定服务端商品为 **10.01 CNY 兑换 1000 游戏币**。案例使用真实 MySQL 和本地 HTTP 渠道模拟器，MQ 用内存队列模拟，不涉及真实资金交易。
+
+### 案例接入流程
+
+```mermaid
+flowchart TD
+    Dependency[宿主引入 starter、JDBC 与驱动] --> Tables[业务库执行组件 DDL]
+    Tables --> Config[启用组件并绑定同一数据源和事务管理器]
+    Config --> Model[定义充值单、钱包和唯一入账流水]
+    Model --> Handler[实现并注册 GAME_RECHARGE:v1 Handler]
+    Handler --> Methods[实现 execute、recover、applyResult 与 codec]
+    Methods --> Submit[创建充值单时同事务提交任务与输入快照]
+    Submit --> MQChoice{需要 MQ 加速?}
+    MQChoice -->|是| MQAdapter[提供发布 Bean 和消费适配器]
+    MQChoice -->|否| Poll[使用默认扫描补偿]
+    MQAdapter --> Confirm[接入渠道确认流程：认证通知、查单及金额核验]
+    Poll --> Confirm
+    Confirm --> Alert[接入告警与有鉴权的人工恢复入口]
+    Alert --> Verify[验证回滚、超时、并发、通知丢失及幂等入账]
+```
+
+`bizType=GAME_RECHARGE`、`handlerVersion=1` 路由至 `@BizSpi(name="GAME_RECHARGE:v1")`。持久化的输入快照提供订单、玩家、商品、金额及游戏币数量，扫描无需知道 Java 回调方法名。
+
+### 充值运行时序
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Player as 游戏玩家
+    participant Game as 游戏业务服务
+    participant DB as 同库任务、订单与钱包
+    participant Wake as MQ / 扫描
+    participant Engine as 组件执行器
+    participant Handler as 充值 SPI Handler
+    participant Channel as 支付渠道
+    Player->>Game: 发起充值
+    Game->>DB: 同事务写入任务 READY 和订单 NEW
+    DB-->>Game: 提交成功
+    Game-->>Player: 返回订单号
+    Note over DB,Wake: 提交后 MQ 唤醒；消息丢失由扫描兜底
+    Wake->>Engine: executeTask(taskId)
+    Engine->>DB: CAS 抢占并记录执行令牌
+    Engine->>Handler: execute(输入快照)
+    Handler->>Channel: 使用固定 operationKey 发起支付
+    alt 明确受理
+        Channel-->>Handler: ACCEPTED
+        Handler-->>Engine: 明确成功结果
+        Engine->>DB: 先持久化渠道结果
+        Engine->>Handler: applyResult
+        Handler->>DB: 同事务更新订单 ACCEPTED 与任务 DONE
+        Note over Game,DB: 受理不等于到账，钱包余额不变
+    else 发起调用超时
+        Handler-->>Engine: 异常或 UNKNOWN
+        Engine->>DB: 记录 UNKNOWN
+        Wake->>Engine: 到期后驱动核实
+        Engine->>Handler: recover(输入快照)
+        Handler->>Channel: 主动查单，不盲目重发
+        Channel-->>Handler: 明确状态或仍未知
+        Handler-->>Engine: 明确结果 / 等待 / 安全重试 / 人工处理
+        Engine->>DB: 持久化决定；明确结果走本地应用
+    end
+    opt 收到支付通知，且本地尚未确认到账
+        Channel-->>Game: 支付通知
+        Game->>Game: 验证通知身份与协议
+        Game->>Channel: 主动查单
+        Channel-->>Game: PAID 与订单金额、币种
+        Game->>DB: 核验后同事务写唯一流水、增加钱包、订单 PAID
+    end
+    Note over Game,DB: 发起或恢复直接得到 PAID 时，在 applyResult 中原子入账并完成任务
+    Note over Game,DB: 重复确认不重复发币；迟到 ACCEPTED 不覆盖 PAID
+```
+
+通知可能早于发起结果，也可能丢失。案例验证了提前通知、超时后查得 PAID、并发通知及入账回滚。实际渠道的签名、鉴权、查询语义与重试许可由宿主实现，不能直接套用模拟协议。
+
+完整实现及 15 个场景详见 [游戏充值验证](docs/game-recharge-validation.md)。
 
 ## 状态及重试
 
